@@ -2,9 +2,13 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/user');
 const NotFoundError = require('../errorModules/notFound');
-const BadRequestError = require('../errorModules/badRequest');
 const ConflictError = require('../errorModules/conflict');
 const UnauthorizedError = require('../errorModules/unauthorized');
+const {
+  USER_EXISTS_CODE, USER_EMAIL_EXISTS, CURRENT_USER_NOT_FOUND,
+  REQUESTED_USER_NOT_FOUND, INCORRECT_CREDENTIALS,
+  WELCOME_MESSAGE, GOODBYE_MESSAGE,
+} = require('../utils/constants');
 
 const { NODE_ENV, JWT_SECRET } = process.env;
 const key = NODE_ENV === 'production' ? JWT_SECRET : 'dev-secret-key';
@@ -13,16 +17,12 @@ module.exports.getCurrentUser = (req, res, next) => {
   User.findById(req.user._id)
     .then((user) => {
       if (!user) {
-        throw new NotFoundError('Текущий пользователь не найден');
+        throw new NotFoundError(CURRENT_USER_NOT_FOUND);
       }
       res.send(user);
     })
     .catch((err) => {
-      if (err.name === 'CastError') {
-        next(new BadRequestError('Неправильный id'));
-      } else {
-        next(err);
-      }
+      next(err);
     });
 };
 
@@ -43,10 +43,8 @@ module.exports.createUser = (req, res, next) => {
       email, name, about, avatar,
     }))
     .catch((err) => {
-      if (err.name === 'ValidationError') {
-        next(new BadRequestError(`Некорректные данные ${err}`));
-      } else if (err.code === 11000) {
-        next(new ConflictError('Пользователь с таким email уже существует'));
+      if (err.code === USER_EXISTS_CODE) {
+        next(new ConflictError(USER_EMAIL_EXISTS));
       } else {
         next(err);
       }
@@ -58,13 +56,13 @@ module.exports.editUserInfo = (req, res, next) => {
   User.findByIdAndUpdate(req.user._id, { name, email }, { new: true, runValidators: true })
     .then((user) => {
       if (!user) {
-        throw new NotFoundError('Запрашиваемый пользователь не найден');
+        throw new NotFoundError(REQUESTED_USER_NOT_FOUND);
       }
       res.send(user);
     })
     .catch((err) => {
-      if (err.name === 'ValidationError') {
-        next(new BadRequestError(`Некорректные данные ${err}`));
+      if (err.code === USER_EXISTS_CODE) {
+        next(new ConflictError(USER_EMAIL_EXISTS));
       } else {
         next(err);
       }
@@ -84,13 +82,13 @@ module.exports.login = (req, res, next) => {
           httpOnly: true,
           sameSite: true,
         })
-        .send({ message: `Добро пожаловать: ${user.name}` });
+        .send({ message: WELCOME_MESSAGE + user.name });
     })
     .catch(() => {
-      next(new UnauthorizedError('Неправильные почта или пароль'));
+      next(new UnauthorizedError(INCORRECT_CREDENTIALS));
     });
 };
 
 module.exports.logout = (req, res) => {
-  res.clearCookie('jwt').send({ message: 'Выход выполнен' });
+  res.clearCookie('jwt').send({ message: GOODBYE_MESSAGE });
 };
